@@ -18,6 +18,17 @@ type Server struct {
 	Port int
 }
 
+// 写死当前客户端绑定的handle api
+func CallbackToClient(conn *net.TCPConn, data []byte, cnt int) error {
+	fmt.Printf("[Connection Handle] CallbackToClient: Received %d bytes from %s: %s\n", cnt, conn.RemoteAddr().String(), string(data[:cnt]))
+	// Echo the data back to the client
+	_, err := conn.Write(data[:cnt])
+	if err != nil {
+		fmt.Println("Write error:", err)
+	}
+	return err
+}
+
 func (s *Server) Start() {
 	fmt.Printf("[Start] Server is listening IP:%s, Port:%d, Version:%s\n", s.IP, s.Port, s.IPVersion)
 
@@ -37,6 +48,8 @@ func (s *Server) Start() {
 		}
 		fmt.Println("start w2-inx server", s.Name, "success, now listening...")
 
+		var cId uint32 = 0
+
 		// 3. 阻塞等待客户端的链接，处理客户端链接业务(读写)
 		for {
 			conn, err := listener.AcceptTCP()
@@ -45,27 +58,11 @@ func (s *Server) Start() {
 				continue
 			}
 
-			// 与已经建立连接的客户端做一个基本的-最大512字节长度的回显业务
-			fmt.Println("Client connected:", conn.RemoteAddr().String())
-			go func() {
-				for {
-					buf := make([]byte, 512)
-					// 从客户端读取数据到buf中
-					cnt, err := conn.Read(buf)
-					if err != nil {
-						fmt.Println("receive buffer error", err)
-						continue
-					}
+			// 将处理新链接的业务方法和conn进行绑定，得到我们的链接模块
+			dealConn := NewConnection(conn, cId, CallbackToClient)
+			cId++
 
-					fmt.Println("Receive from client:", string(buf[:cnt]), "Length:", cnt)
-
-					// 回显功能
-					if _, err := conn.Write(buf[:cnt]); err != nil {
-						fmt.Println("write buffer error", err)
-						continue
-					}
-				}
-			}()
+			go dealConn.Start()
 		}
 	}()
 }
